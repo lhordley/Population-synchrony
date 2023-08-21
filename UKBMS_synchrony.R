@@ -1,5 +1,5 @@
 # --------------- Code --------------
-# Disentangling how climate and dispersal drive temporal trends in spatial synchrony among populations
+# Disentangling how climate and dispersal drive temporal trends in synchronous population dynamics 
 # UKBMS dataset analysis
 
 rm(list=ls()) # clear R
@@ -13,45 +13,6 @@ library(plotrix)
 library(ggeffects)
 library(DHARMa)
 options(scipen=999)
-
-## load data
-# pair_attr <- readRDS("../Data/Butterfly_sync_data/pop_climate_synchrony_UKBMS.rds") # butterfly pair attribute data
-# specialism <- read.csv("../Data/UKBMS_data/UKBMS_UKspecieslist.csv", header=TRUE) # specialism data
-# butterfly_mob <- read.csv("../Data/UKBMS_data/species.traits.full.table.csv", header = TRUE) # mobility data
-# WCBS_data <- read.csv("../Data/Butterfly_sync_data/Average_abundance_UKBMS.csv", header=TRUE) # average abundance
-# abundance_results1 <- read.csv("../Results/Butterfly_results/abundance_results_85_00_3cat.csv", header=TRUE) # sig changes 85-00
-# abundance_results2 <- read.csv("../Results/Butterfly_results/abundance_results_00_12_3cat.csv", header=TRUE) # sig changes 00-12
-# abundance_results3 <- read.csv("../Results/Butterfly_results/abundance_results_85_00.csv", header=TRUE) # non-sig changes 85-00
-# abundance_results4 <- read.csv("../Results/Butterfly_results/abundance_results_00_12.csv", header=TRUE)# non-sig changes 00-12
-# 
-# specialism <- specialism[,c("BMSCODE", "STRATEGY")]
-# colnames(specialism) <- c("BMSCODE", "specialism")
-# butterfly_mob <- butterfly_mob[,c("species", "mobility_wil")]
-# butterfly_mob <- na.omit(butterfly_mob)
-# average_abund <- WCBS_data[,c("Species_code", "average_abundance")]
-# abundance_results1 <- abundance_results1[,c("Species.code","abund_change")]
-# colnames(abundance_results1) <- c("Species.code", "sig_abund_change_85_00")
-# abundance_results2 <- abundance_results2[,c("Species.code","abund_change")]
-# colnames(abundance_results2) <- c("Species.code", "sig_abund_change_00_12")
-# abundance_results3 <- abundance_results3[,c("Species.code","ab_change_85_00")]
-# colnames(abundance_results3) <- c("Species.code", "abund_change_85_00")
-# abundance_results4 <- abundance_results4[,c("Species.code","ab_change_00_12")]
-# colnames(abundance_results4) <- c("Species.code", "abund_change_00_12")
-# 
-# attributes <- merge(specialism, butterfly_mob, by.x="BMSCODE", by.y="species", all=TRUE)
-# attributes <- merge(attributes, average_abund, by.x="BMSCODE", by.y="Species_code", all=TRUE)
-# attributes <- merge(attributes, abundance_results1, by.x="BMSCODE", by.y="Species.code", all=TRUE)
-# attributes <- merge(attributes, abundance_results2, by.x="BMSCODE", by.y="Species.code", all=TRUE)
-# attributes <- merge(attributes, abundance_results3, by.x="BMSCODE", by.y="Species.code", all=TRUE)
-# attributes <- merge(attributes, abundance_results4, by.x="BMSCODE", by.y="Species.code", all=TRUE)
-# 
-# pair_attr <- merge(pair_attr, attributes, by.x="spp", by.y="BMSCODE", all.x=TRUE)
-# head(pair_attr)
-# summary(pair_attr)
-# 
-# saveRDS(pair_attr, "../Data/Butterfly_sync_data/pop_climate_synchrony_UKBMS_final.rds")
-
-#################### MODEL CHECKS!!!!!! ########################
 
 ## load data
 pair_attr <- readRDS("../Data/Butterfly_sync_data/pop_climate_synchrony_UKBMS_final.rds") # butterfly pair attribute data

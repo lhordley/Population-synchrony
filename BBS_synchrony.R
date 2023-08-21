@@ -1,5 +1,5 @@
 # --------------- Code --------------
-# Disentangling how climate and dispersal drive temporal trends in spatial synchrony among populations
+# Disentangling how climate and dispersal drive temporal trends in synchronous population dynamics 
 # BBS dataset analysis
 
 rm(list=ls()) # clear R
@@ -13,33 +13,6 @@ library(plotrix)
 library(ggeffects)
 library(DHARMa)
 options(scipen=999)
-
-# ## load data
-# pair_attr_BBS <- readRDS("../Data/Bird_sync_data/pop_climate_synchrony_BBS.rds") # BBS pair attribute data
-# bird_dispersal <- read.csv("../Data/Woodland_bird_dispersal_Paradis1998.csv", header=TRUE)
-# bird_common <- read.csv("../Data/BTO_data/pop_estimates_birds.csv", header=TRUE)
-# abundance_results_bbs1 <- read.csv("../Results/Bird_results/abundance_results_99_12.csv", header=TRUE)
-# abundance_results_bbs2 <- read.csv("../Results/Bird_results/abundance_results_99_12_3cat.csv", header=TRUE)
-# specialism <- read.csv("../Data/BTO_data/woodland_generalist_specialist.csv", header=TRUE)
-# 
-# specialism <- specialism[,c("species_code", "specialism")]
-# bird_dispersal <- bird_dispersal[,c("Species_code", "Breeding_AM")]
-# bird_common <- bird_common[,c("species_code", "pop_estimate")]
-# abundance_results_bbs1 <- abundance_results_bbs1[,c("species_code", "ab_change_99_12")]
-# abundance_results_bbs2 <- abundance_results_bbs2[,c("species_code", "abund_change")]
-# colnames(abundance_results_bbs2)[2] <- "sig_ab_change_99_12"
-# 
-# attributes <- merge(bird_dispersal, bird_common, by.x="Species_code", by.y="species_code", all=TRUE)
-# attributes <- merge(attributes, abundance_results_bbs1, by.x="Species_code", by.y="species_code", all=TRUE)
-# attributes <- merge(attributes, abundance_results_bbs2, by.x="Species_code", by.y="species_code", all=TRUE)
-# attributes <- merge(attributes, specialism, by.x="Species_code", by.y="species_code", all=TRUE)
-# 
-# pair_attr_BBS <- merge(pair_attr_BBS, attributes, by.x="spp", by.y="Species_code", all.x=TRUE)
-# head(pair_attr_BBS)
-# summary(pair_attr_BBS)
-# 
-# saveRDS(pair_attr_BBS, "../Data/Bird_sync_data/pop_climate_synchrony_BBS_final.rds")
-
 
 ## load data
 pair_attr_BBS <- readRDS("../Data/Bird_sync_data/pop_climate_synchrony_BBS_final.rds") # BBS bird pair attribute data

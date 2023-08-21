@@ -1,5 +1,5 @@
 # --------------- Code --------------
-# Disentangling how climate and dispersal drive temporal trends in spatial synchrony among populations
+# Disentangling how climate and dispersal drive temporal trends in synchronous population dynamics 
 # CBC dataset analysis
 
 rm(list=ls()) # clear R
@@ -13,29 +13,6 @@ library(plotrix)
 library(ggeffects)
 library(DHARMa)
 options(scipen=999)
-
-# ## load data
-# pair_attr_CBC <- readRDS("../Data/Bird_sync_data/pop_climate_synchrony_CBC.rds") # CBC pair attribute data
-# bird_dispersal <- read.csv("../Data/Woodland_bird_dispersal_Paradis1998.csv", header=TRUE)
-# bird_common <- read.csv("../Data/BTO_data/pop_estimates_birds.csv", header=TRUE)
-# abundance_results_cbc1 <- read.csv("../Results/Bird_results/abundance_results_85_96.csv", header=TRUE)
-# abundance_results_cbc2 <- read.csv("../Results/Bird_results/abundance_results_85_96_3cat.csv", header=TRUE)
-# 
-# bird_dispersal <- bird_dispersal[,c("Species_code", "Breeding_AM")]
-# bird_common <- bird_common[,c("species_code", "pop_estimate")]
-# abundance_results_cbc1 <- abundance_results_cbc1[,c("species_code", "ab_change_85_96")]
-# abundance_results_cbc2 <- abundance_results_cbc2[,c("species_code", "abund_change")]
-# colnames(abundance_results_cbc2)[2] <- "sig_ab_change_85_96"
-# 
-# attributes <- merge(bird_dispersal, bird_common, by.x="Species_code", by.y="species_code", all=TRUE)
-# attributes <- merge(attributes, abundance_results_cbc1, by.x="Species_code", by.y="species_code", all=TRUE)
-# attributes <- merge(attributes, abundance_results_cbc2, by.x="Species_code", by.y="species_code", all=TRUE)
-# 
-# pair_attr_CBC <- merge(pair_attr_CBC, attributes, by.x="spp", by.y="Species_code", all.x=TRUE)
-# head(pair_attr_CBC)
-# summary(pair_attr_CBC)
-# 
-# saveRDS(pair_attr_CBC, "../Data/Bird_sync_data/pop_climate_synchrony_CBC_final.rds")
 
 ## load data
 pair_attr_CBC <- readRDS("../Data/Bird_sync_data/pop_climate_synchrony_CBC_final.rds") # CBC bird pair attribute data
