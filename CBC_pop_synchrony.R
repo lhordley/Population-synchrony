@@ -12,10 +12,13 @@ library(lmerTest)
 library(plotrix)
 library(ggeffects)
 library(DHARMa)
+library(foreach)
+library(doParallel)
+library(stringr)
 options(scipen=999)
 
 ## load data
-pair_attr_CBC <- readRDS("../Data/Bird_sync_data/pop_climate_synchrony_CBC_final.rds") # CBC bird pair attribute data
+pair_attr_CBC <- readRDS("pop_climate_synchrony_CBC_final.rds") # CBC bird pair attribute data
 str(pair_attr_CBC)
 pair_attr_CBC$pop_estimate <- as.numeric(pair_attr_CBC$pop_estimate)
 pair_attr_CBC$ab_change_85_96 <- as.factor(pair_attr_CBC$ab_change_85_96)
@@ -25,8 +28,10 @@ pair_attr_CBC$specialism <- as.factor(pair_attr_CBC$specialism)
 
 summary(pair_attr_CBC)
 
-### 1a. Average synchrony + specialism 
-pair_attr_CBC$mid.year <- as.factor(pair_attr_CBC$mid.year)
+##########################################
+### 1a. Average synchrony + specialism ### 
+##########################################
+
 length(unique(pair_attr_CBC$spp)) # 26 spp
 
 strategy_model_cbc <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scale(hab_sim) + mid.year + scale(summer_temp) + specialism + 
@@ -34,9 +39,17 @@ strategy_model_cbc <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scale
 summary(strategy_model_cbc)
 # non-significant
 results_table_average_spec <- data.frame(summary(strategy_model_cbc)$coefficients[,1:5])
-write.csv(results_table_average_spec, file = "../Results/Model_outputs/CBC/average_spec_cbc.csv", row.names=TRUE) # 26 species
+confidence_intervals <- data.frame(confint(strategy_model_cbc, method="Wald"))
+confidence_intervals <- na.omit(confidence_intervals)
+colnames(confidence_intervals) <- c("lowerCI", "upperCI")
+results_table_average_spec <- cbind(results_table_average_spec,confidence_intervals)
 
-### 1b. Change in synchrony + specialism
+write.csv(results_table_average_spec, file = "../Results/CBC/average_spec_cbc.csv", row.names=TRUE) # 26 species
+
+############################################
+### 1b. Change in synchrony + specialism ### 
+############################################
+
 pair_attr_cbc <- droplevels(pair_attr_CBC[pair_attr_CBC$mid.year==1984.5 | pair_attr_CBC$mid.year==1995.5,])
 
 pair_attr_cbc$mid.year <- as.numeric(pair_attr_cbc$mid.year)
@@ -47,7 +60,7 @@ spec_model_cbc2 <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scale(ha
 summary(spec_model_cbc2)
 # significant
 results_table_strategy_cbc <- data.frame(summary(spec_model_cbc2)$coefficients[,1:5]) ## 26 species
-write.csv(results_table_strategy_cbc, file = "../Results/Model_outputs/CBC/change_spec_cbc.csv", row.names=TRUE)
+write.csv(results_table_strategy_cbc, file = "../Results/CBC/change_spec_cbc.csv", row.names=TRUE)
 
 # plot result to find direction
 dat <- ggpredict(spec_model_cbc2, terms = c("mid.year", "specialism"))
@@ -125,8 +138,74 @@ spec <- ggplot(mapping=aes(x=Specialism, y=slope, ymin=slope-SE, ymax=slope+SE))
 spec
 dev.off()
 
+#### run permutations ####
 
-#### 2a. Average synchrony + mobility
+## save true model results (to merge in with bootstrapped models later)
+main_result_table <- data.frame(anova(spec_model_cbc2)[5]) ## save anova table from main model
+main_result_table$i <- 0 ## make i column with zeros 
+main_result_table$parameter <- paste(row.names(main_result_table)) ## move row.names to parameter column
+rownames(main_result_table) <- 1:nrow(main_result_table) ## change row names to numbers
+## keep rows with specialism*midyear interaction
+main_result_table <- main_result_table[which(main_result_table$parameter=="scale(mid.year):specialism"),]
+
+## run 999 permutation tests
+## Set up number of cores to run on (7)
+cores=detectCores()
+cl <- makeCluster(cores[1]-1) #not to overload your computer
+registerDoParallel(cl)
+
+n_sims <- 999
+para_start_time = Sys.time()
+cbc_spec_para <- foreach (i=1:n_sims,  .combine=rbind, .packages='lme4') %dopar% {
+  print(i)
+  pair_attr_cbc$spec_shuffle <- sample(pair_attr_cbc$specialism) ## randomly shuffle specialism varaible
+  model <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scale(hab_sim) + scale(summer_temp) + 
+                  scale(mid.year)*spec_shuffle + (1|family) + (1|pair.id) + (1|spp), data = pair_attr_cbc)
+  ## run model with shuffled variable
+  ## save results
+  anoresult<-anova(model)
+  data.frame(anoresult, i=i)
+}
+stopCluster(cl)
+para_end_time = Sys.time()
+para_run_time = para_end_time - para_start_time
+print(paste0("TOTAL RUN TIME: ", para_run_time)) ## 9.618 minutes for 999 runs!
+
+### save results
+cbc_spec_para$parameter <- paste(row.names(cbc_spec_para)) ## move row.names to parameter column
+rownames(cbc_spec_para) <- 1:nrow(cbc_spec_para) ## change row names to numbers
+cbc_spec_para <- cbc_spec_para[,-c(1:3)] ## remove unnecessary columns
+## only interested in specialism interaction
+cbc_spec_para <- cbc_spec_para[grep("mid.year):spec_shuffle", cbc_spec_para$parameter),]
+final_results_table <- rbind(main_result_table, cbc_spec_para) ## bind the two data frames together
+
+F_value <- with(final_results_table, final_results_table$F.value[final_results_table$i==0]) ## true F value from main model
+ggplot(final_results_table, aes(x=F.value)) +
+  geom_histogram(fill= 'grey') +
+  geom_vline(aes(xintercept= final_results_table$F.value[final_results_table$i==0]), colour="red")+
+  scale_y_continuous(expand = c(0, 0))+
+  theme_classic()
+
+## save file
+write.csv(final_results_table, file = "../Results/CBC/perm_change_spec_cbc.csv", row.names=TRUE)
+## read in file
+perm_change_spec_cbc <- read.csv("../Results/CBC/perm_change_spec_cbc.csv", header=TRUE) 
+
+## Calculate p value
+number_of_permutations <- 1000
+true_change_spec_cbc <- perm_change_spec_cbc[perm_change_spec_cbc$i==0,]
+perm_change_spec_cbc <- perm_change_spec_cbc[!perm_change_spec_cbc$i==0,] ## remove true value to calc. p value
+diff.observed <- true_change_spec_cbc$F.value ## true F value
+
+# P-value is the fraction of how many times the permuted difference is equal or more extreme than the observed difference
+pvalue = sum(abs(perm_change_spec_cbc$F.value) >= abs(diff.observed)) / number_of_permutations
+pvalue ## 0.002
+
+
+########################################
+### 2a. Average synchrony + mobility ### 
+########################################
+
 pair_attr_CBC_mob <- pair_attr_CBC[!is.na(pair_attr_CBC$Breeding_AM),]
 str(pair_attr_CBC_mob)
 length(unique(pair_attr_CBC_mob$spp)) # 20 spp
@@ -136,13 +215,21 @@ dispersal_model_cbc <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scal
 summary(dispersal_model_cbc)
 # non-significant
 results_table_mob_cbc <- data.frame(summary(dispersal_model_cbc)$coefficients[,1:5]) ## 20 species
-write.csv(results_table_mob_cbc, file = "../Results/Model_outputs/CBC/average_mob_cbc.csv", row.names=TRUE)
+confidence_intervals <- data.frame(confint(dispersal_model_cbc, method="Wald"))
+confidence_intervals <- na.omit(confidence_intervals)
+colnames(confidence_intervals) <- c("lowerCI", "upperCI")
+results_table_mob_cbc <- cbind(results_table_mob_cbc,confidence_intervals)
+
+write.csv(results_table_mob_cbc, file = "../Results/CBC/average_mob_cbc.csv", row.names=TRUE)
 
 qqnorm(resid(dispersal_model_cbc))
 qqline(resid(dispersal_model_cbc))
 plot(dispersal_model_cbc, which = 1)
 
-### 2b. Change in synchrony + mobility
+##########################################
+### 2b. Change in synchrony + mobility ### 
+##########################################
+
 pair_attr_cbc_mob <- droplevels(pair_attr_CBC_mob[pair_attr_CBC_mob$mid.year==1984.5 | pair_attr_CBC_mob$mid.year==1995.5,])
 
 pair_attr_cbc_mob$mid.year <- as.numeric(pair_attr_cbc_mob$mid.year)
@@ -156,23 +243,99 @@ summary(dispersal_model_cbc2)
 results_table_dispersal_cbc <- data.frame(summary(dispersal_model_cbc2)$coefficients[,1:5]) ## 20 species
 write.csv(results_table_dispersal_cbc, file = "../Results/Model_outputs/CBC/change_mob_cbc.csv", row.names=TRUE)
 
-#### 3a. Average synchrony + average abundance
+#################################################
+### 3a. Average synchrony + average abundance ### 
+#################################################
+
 common_model_cbc <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scale(hab_sim) + mid.year + scale(summer_temp) + 
                            scale(pop_estimate) + (1|family) + (1|pair.id) + (1|spp), data = pair_attr_CBC)
 
-summary(common_model_cbc) ## pop estimate is significant (p=0.0128)
+summary(common_model_cbc) ## pop estimate is significant
 results_table_abund_cbc <- data.frame(summary(common_model_cbc)$coefficients[,1:5]) ## 26 species
-write.csv(results_table_abund_cbc, file = "../Results/Model_outputs/CBC/average_abund_cbc.csv", row.names=TRUE)
-
-qqnorm(resid(common_model_cbc))
-qqline(resid(common_model_cbc))
-plot(common_model_cbc, which = 1)
+confidence_intervals <- data.frame(confint(common_model_cbc, method="Wald"))
+confidence_intervals <- na.omit(confidence_intervals)
+colnames(confidence_intervals) <- c("lowerCI", "upperCI")
+results_table_abund_cbc <- cbind(results_table_abund_cbc,confidence_intervals)
+write.csv(results_table_abund_cbc, file = "../Results/CBC/average_abund_cbc.csv", row.names=TRUE)
 
 # plot result to show direction
 dat <- ggpredict(common_model_cbc, terms = "pop_estimate")
 plot(dat) # more common species have higher average levels of pop. synchrony
 
-#### 3b. Change in synchrony + change in abundance
+#### run permutations ####
+
+## save true model results (to merge in with bootstrapped models later)
+main_result_table <- data.frame(anova(common_model_cbc)[5]) ## save anova table from main model
+main_result_table$i <- 0 ## make i column with zeros 
+main_result_table$parameter <- paste(row.names(main_result_table)) ## move row.names to parameter column
+rownames(main_result_table) <- 1:nrow(main_result_table) ## change row names to numbers
+## keep rows with abundance
+main_result_table <- main_result_table[which(main_result_table$parameter=="scale(pop_estimate)"),]
+
+## run 999 permutation tests
+## Set up number of cores to run on (7)
+cores <- parallel::detectCores()
+cl <- makeCluster(cores[1]-1) # not to overload your computer
+registerDoParallel(cl)
+
+n_sims <- 999
+
+pb <- txtProgressBar(max = n_sims, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress=progress) 
+
+para_start_time = Sys.time()
+cbc_abund_para <- foreach (i=1:n_sims, .options.snow = opts, .combine=rbind, .packages='lme4') %dopar% {
+  print(i)
+  pair_attr_CBC$abund_shuffle <- sample(pair_attr_CBC$pop_estimate) ## randomly shuffle abundance varaible
+  model <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scale(hab_sim) + mid.year + scale(summer_temp) + 
+                  scale(abund_shuffle) + (1|family) + (1|pair.id) + (1|spp), data = pair_attr_CBC)
+  ## run model with shuffled variable
+  ## save results
+  anoresult<-anova(model)
+  data.frame(anoresult, i=i)
+}
+stopCluster(cl)
+para_end_time = Sys.time()
+para_run_time = para_end_time - para_start_time
+print(paste0("TOTAL RUN TIME: ", para_run_time)) ## 35 minutes for 999 runs
+
+### save results
+cbc_abund_para$parameter <- paste(row.names(cbc_abund_para)) ## move row.names to parameter column
+rownames(cbc_abund_para) <- 1:nrow(cbc_abund_para) ## change row names to numbers
+cbc_abund_para <- cbc_abund_para[,-c(1:3)] ## remove unnecessary columns
+## only interested in abund shuffle
+cbc_abund_para <- cbc_abund_para[grep("abund_shuffle", cbc_abund_para$parameter),]
+
+final_results_table <- rbind(main_result_table, cbc_abund_para) ## bind the two data frames together
+
+F_value <- with(final_results_table, final_results_table$F.value[final_results_table$i==0]) ## true F value from main model
+ggplot(final_results_table, aes(x=F.value)) +
+  geom_histogram(fill= 'grey') +
+  geom_vline(aes(xintercept= final_results_table$F.value[final_results_table$i==0]), colour="red")+
+  scale_y_continuous(expand = c(0, 0))+
+  theme_classic()
+
+## save file
+write.csv(final_results_table, file = "../Results/CBC/perm_average_abund_cbc.csv", row.names=TRUE)
+## read in file
+perm_average_abund_cbc <- read.csv("../Results/CBC/perm_average_abund_cbc.csv", header=TRUE) 
+
+## Calculate p value
+number_of_permutations <- 1000
+true_average_abund_cbc <- perm_average_abund_cbc[perm_average_abund_cbc$i==0,]
+perm_average_abund_cbc <- perm_average_abund_cbc[!perm_average_abund_cbc$i==0,] ## remove true value to calc. p value
+diff.observed <- true_average_abund_cbc$F.value ## true F value
+
+# P-value is the fraction of how many times the permuted difference is equal or more extreme than the observed difference
+pvalue = sum(abs(perm_average_abund_cbc$F.value) >= abs(diff.observed)) / number_of_permutations
+pvalue ## 0.004
+
+
+#############################################################
+### 3b. Change in synchrony + non-sig change in abundance ### 
+#############################################################
+
 pair_attr_cbc <- droplevels(pair_attr_CBC[pair_attr_CBC$mid.year==1984.5 | pair_attr_CBC$mid.year==1995.5,])
 pair_attr_cbc <- pair_attr_cbc[!is.na(pair_attr_cbc$ab_change_85_96),]
 pair_attr_cbc$mid.year <- as.numeric(pair_attr_cbc$mid.year)
@@ -189,7 +352,10 @@ qqnorm(resid(abund_model_cbc))
 qqline(resid(abund_model_cbc))
 plot(abund_model_cbc, which = 1)
 
-#### 3b. Change in synchrony + change in abundance
+#########################################################
+### 3c. Change in synchrony + sig change in abundance ### 
+#########################################################
+
 pair_attr_cbc <- droplevels(pair_attr_CBC[pair_attr_CBC$mid.year==1984.5 | pair_attr_CBC$mid.year==1995.5,])
 pair_attr_cbc <- pair_attr_cbc[!is.na(pair_attr_cbc$sig_ab_change_85_96),]
 pair_attr_cbc$mid.year <- as.numeric(pair_attr_cbc$mid.year)
@@ -203,11 +369,11 @@ pair_attr_cbc2 <- droplevels(pair_attr_cbc2)
 length(unique(pair_attr_cbc2$spp)) # 17 spp
 
 abund_model_cbc2 <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scale(hab_sim) + scale(summer_temp) + 
-                          scale(mid.year)*sig_ab_change_85_96 + (1|family) + (1|pair.id) + (1|spp), data = pair_attr_cbc2)
+                          scale(mid.year)*sig_ab_change_85_96 + (1|family) + (1|pair.id) + (1|spp), data = pair_attr_cbc)
 summary(abund_model_cbc2)
 # significant (just)
 results_table_abund_cbc <- data.frame(summary(abund_model_cbc2)$coefficients[,1:5]) ## 22 species
-write.csv(results_table_abund_cbc, file = "../Results/Model_outputs/CBC/change_abund_cbc_3cat.csv", row.names=TRUE)
+write.csv(results_table_abund_cbc, file = "../Results/CBC/change_sig_abund_cbc2.csv", row.names=TRUE)
 
 dat <- ggpredict(abund_model_cbc2, terms = c("mid.year", "sig_ab_change_85_96"))
 plot(dat) # species significantly increasing in abundance increase in synchrony, whereas declining species decrease in synchrony
@@ -288,6 +454,71 @@ ggarrange(abund, abund2,
           labels = c("(a)", "(b)"), font.label = list(size = 16, color ="black"),
           ncol = 2, nrow = 1)
 dev.off()
+
+
+#### run permutations ####
+
+main_result_table <- data.frame(anova(abund_model_cbc2)[5]) ## save anova table from main model
+main_result_table$i <- 0 ## make i column with zeros 
+main_result_table$parameter <- paste(row.names(main_result_table)) ## move row.names to parameter column
+rownames(main_result_table) <- 1:nrow(main_result_table) ## change row names to numbers
+## keep rows with abundance*midyear interaction
+main_result_table <- main_result_table[which(main_result_table$parameter=="scale(mid.year):sig_ab_change_85_96"),]
+
+## run 999 permutation tests
+## Set up number of cores to run on (7)
+cores=detectCores()
+cl <- makeCluster(cores[1]-1) #not to overload your computer
+registerDoParallel(cl)
+
+n_sims <- 999
+para_start_time = Sys.time()
+cbc_abund_para <- foreach (i=1:n_sims,  .combine=rbind, .packages='lme4') %dopar% {
+  print(i)
+  pair_attr_cbc$abund_shuffle <- sample(pair_attr_cbc$sig_ab_change_85_96) ## randomly shuffle variable
+  model <- lmer(lag0 ~ scale(mean_northing) + scale(distance) + scale(hab_sim) + scale(summer_temp) + 
+                  scale(mid.year)*abund_shuffle + (1|family) + (1|pair.id) + (1|spp), data = pair_attr_cbc)
+  ## run model with shuffled variable
+  ## save results
+  anoresult<-anova(model)
+  data.frame(anoresult, i=i)
+}
+stopCluster(cl)
+para_end_time = Sys.time()
+para_run_time = para_end_time - para_start_time
+print(paste0("TOTAL RUN TIME: ", para_run_time)) ## 9.618 minutes for 999 runs!
+
+### save results
+cbc_abund_para$parameter <- paste(row.names(cbc_abund_para)) ## move row.names to parameter column
+rownames(cbc_abund_para) <- 1:nrow(cbc_abund_para) ## change row names to numbers
+cbc_abund_para <- cbc_abund_para[,-c(1:3)] ## remove unnecessary columns
+## only interested in midyear*mobility interaction
+cbc_abund_para <- cbc_abund_para %>% filter_all(any_vars(grepl(":", .)))
+
+final_results_table <- rbind(main_result_table, cbc_abund_para) ## bind the two data frames together
+
+F_value <- with(final_results_table, final_results_table$F.value[final_results_table$i==0]) ## true F value from main model
+ggplot(final_results_table, aes(x=F.value)) +
+  geom_histogram(fill= 'grey') +
+  geom_vline(aes(xintercept= final_results_table$F.value[final_results_table$i==0]), colour="red")+
+  scale_y_continuous(expand = c(0, 0))+
+  theme_classic()
+
+## save file
+write.csv(final_results_table, file = "../Results/CBC/perm_change_sig_abund_cbc.csv", row.names=TRUE)
+## read in file
+perm_change_abund_cbc <- read.csv("../Results/CBC/perm_change_sig_abund_cbc.csv", header=TRUE) 
+
+## Calculate p value
+number_of_permutations <- 1000
+true_change_abund_ukbms <- perm_change_abund_cbc[perm_change_abund_cbc$i==0,]
+perm_change_abund_ukbms <- perm_change_abund_cbc[!perm_change_abund_cbc$i==0,] ## remove true value to calc. p value
+diff.observed <- true_change_abund_ukbms$F.value ## true F value
+
+# P-value is the fraction of how many times the permuted difference is equal or more extreme than the observed difference
+pvalue = sum(abs(perm_change_abund_cbc$F.value) >= abs(diff.observed)) / number_of_permutations
+pvalue ## 0.048 significant
+
 ############ jitter code #################
 myjit <- ggproto("fixJitter", PositionDodge,
                  width = 0.5,
